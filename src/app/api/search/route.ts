@@ -32,6 +32,7 @@ function mapMatchToCard(
     artDescription:
       getString(
         metadata,
+        "search_string",
         "artDescription",
         "art_description",
         "description",
