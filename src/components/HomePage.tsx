@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { mockCards } from "@/data/mockCards";
-import { searchCards, simulateSearchDelay } from "@/lib/search";
+import { searchCards } from "@/lib/api";
 import { LayoutDensity, PokemonCard } from "@/types/pokemon";
 import Navbar from "./Navbar";
 import HeroSection from "./HeroSection";
@@ -14,8 +13,10 @@ import EmptyState from "./EmptyState";
 
 export default function HomePage() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<PokemonCard[]>(mockCards);
+  const [results, setResults] = useState<PokemonCard[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
   const [layout, setLayout] = useState<LayoutDensity>("grid");
   const [selectedCard, setSelectedCard] = useState<PokemonCard | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -23,12 +24,23 @@ export default function HomePage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const executeSearch = useCallback(async (searchQuery: string) => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+
     setIsLoading(true);
-    await simulateSearchDelay();
-    const filtered = searchCards(mockCards, searchQuery);
-    setResults(filtered);
-    setFadeKey((k) => k + 1);
-    setIsLoading(false);
+    setError(null);
+    setHasSearched(true);
+
+    try {
+      const cards = await searchCards(trimmed);
+      setResults(cards);
+      setFadeKey((k) => k + 1);
+    } catch (err) {
+      setResults([]);
+      setError(err instanceof Error ? err.message : "Search failed.");
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   const handleSearch = useCallback(
@@ -38,7 +50,8 @@ export default function HomePage() {
     [executeSearch]
   );
 
-  const showEmpty = !isLoading && query.trim() !== "" && results.length === 0;
+  const showEmpty =
+    !isLoading && hasSearched && query.trim() !== "" && results.length === 0 && !error;
 
   return (
     <div className="relative min-h-screen">
@@ -60,11 +73,18 @@ export default function HomePage() {
             query={query}
             onQueryChange={setQuery}
             onSearch={handleSearch}
+            isLoading={isLoading}
             inputRef={searchInputRef}
           />
 
           <section className="px-6 pb-20">
-            {!isLoading && query.trim() !== "" && results.length > 0 && (
+            {error && (
+              <p className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {error}
+              </p>
+            )}
+
+            {!isLoading && hasSearched && results.length > 0 && (
               <p className="mb-6 text-sm text-white/40">
                 {results.length} result{results.length !== 1 ? "s" : ""} for
                 &ldquo;{query}&rdquo;
@@ -72,21 +92,18 @@ export default function HomePage() {
             )}
 
             {isLoading ? (
-              <LoadingSkeleton layout={layout} />
+              <LoadingSkeleton layout={layout} count={12} />
             ) : showEmpty ? (
               <EmptyState query={query} />
-            ) : (
-              <div
-                key={fadeKey}
-                className="animate-in fade-in duration-500"
-              >
+            ) : hasSearched && results.length > 0 ? (
+              <div key={fadeKey} className="animate-in fade-in duration-500">
                 <CardGrid
                   cards={results}
                   layout={layout}
                   onInfoClick={setSelectedCard}
                 />
               </div>
-            )}
+            ) : null}
           </section>
         </main>
       </div>

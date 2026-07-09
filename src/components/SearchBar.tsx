@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 
 interface SearchBarProps {
   value: string;
   onChange: (value: string) => void;
   onSearch: (query: string) => void;
+  isLoading?: boolean;
   inputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
@@ -14,6 +15,7 @@ export default function SearchBar({
   value,
   onChange,
   onSearch,
+  isLoading = false,
   inputRef,
 }: SearchBarProps) {
   const internalRef = useRef<HTMLInputElement>(null);
@@ -47,12 +49,17 @@ export default function SearchBar({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="Describe the art you're looking for..."
-            className="flex-1 bg-transparent text-base text-white placeholder:text-white/35 outline-none md:text-lg"
+            disabled={isLoading}
+            className="flex-1 bg-transparent text-base text-white placeholder:text-white/35 outline-none disabled:opacity-50 md:text-lg"
             aria-label="Search Pokémon card art"
           />
-          <kbd className="hidden shrink-0 items-center gap-0.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1 font-mono text-xs text-white/40 sm:inline-flex">
-            <span className="text-[10px]">⌘</span>K
-          </kbd>
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-white/50" />
+          ) : (
+            <kbd className="hidden shrink-0 items-center gap-0.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1 font-mono text-xs text-white/40 sm:inline-flex">
+              <span className="text-[10px]">⌘</span>K
+            </kbd>
+          )}
         </div>
       </div>
     </form>

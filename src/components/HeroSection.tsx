@@ -7,6 +7,7 @@ interface HeroSectionProps {
   query: string;
   onQueryChange: (query: string) => void;
   onSearch: (query: string) => void;
+  isLoading?: boolean;
   inputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
@@ -14,6 +15,7 @@ export default function HeroSection({
   query,
   onQueryChange,
   onSearch,
+  isLoading = false,
   inputRef,
 }: HeroSectionProps) {
   return (
@@ -26,6 +28,7 @@ export default function HeroSection({
         value={query}
         onChange={onQueryChange}
         onSearch={onSearch}
+        isLoading={isLoading}
         inputRef={inputRef}
       />
 
@@ -34,11 +37,12 @@ export default function HeroSection({
           <button
             key={sample}
             type="button"
+            disabled={isLoading}
             onClick={() => {
               onQueryChange(sample);
               onSearch(sample);
             }}
-            className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-white/50 backdrop-blur-sm transition-all duration-200 hover:border-white/20 hover:bg-white/10 hover:text-white/80"
+            className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs text-white/50 backdrop-blur-sm transition-all duration-200 hover:border-white/20 hover:bg-white/10 hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {sample}
           </button>
