@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "ingest": "tsx scripts/ingestCards.ts"
+    "ingest": "tsx scripts/ingestCards.ts",
+    "ingest:new": "tsx scripts/ingestNewCards.ts",
+    "compare-detail": "tsx scripts/compareDetail.ts"
   },
   "dependencies": {
     "@pinecone-database/pinecone": "^8.0.0",

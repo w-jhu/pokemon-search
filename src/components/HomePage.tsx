@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { searchCards } from "@/lib/api";
 import { LayoutDensity, PokemonCard } from "@/types/pokemon";
+import { EMPTY_FILTERS, SearchFilters } from "@/data/filterOptions";
 import Navbar from "./Navbar";
 import HeroSection from "./HeroSection";
 import CardGrid from "./CardGrid";
@@ -13,6 +14,7 @@ import EmptyState from "./EmptyState";
 
 export default function HomePage() {
   const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
   const [results, setResults] = useState<PokemonCard[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,35 +25,53 @@ export default function HomePage() {
   const [fadeKey, setFadeKey] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const executeSearch = useCallback(async (searchQuery: string) => {
-    const trimmed = searchQuery.trim();
-    if (!trimmed) return;
+  const executeSearch = useCallback(
+    async (searchQuery: string, searchFilters: SearchFilters) => {
+      const trimmed = searchQuery.trim();
+      if (!trimmed) return;
 
-    setIsLoading(true);
-    setError(null);
-    setHasSearched(true);
+      setIsLoading(true);
+      setError(null);
+      setHasSearched(true);
 
-    try {
-      const cards = await searchCards(trimmed);
-      setResults(cards);
-      setFadeKey((k) => k + 1);
-    } catch (err) {
-      setResults([]);
-      setError(err instanceof Error ? err.message : "Search failed.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+      try {
+        const cards = await searchCards(trimmed, searchFilters);
+        setResults(cards);
+        setFadeKey((k) => k + 1);
+      } catch (err) {
+        setResults([]);
+        setError(err instanceof Error ? err.message : "Search failed.");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
 
   const handleSearch = useCallback(
     (searchQuery: string) => {
-      executeSearch(searchQuery);
+      executeSearch(searchQuery, filters);
     },
-    [executeSearch]
+    [executeSearch, filters]
+  );
+
+  const handleFiltersChange = useCallback(
+    (nextFilters: SearchFilters) => {
+      setFilters(nextFilters);
+      if (query.trim()) {
+        executeSearch(query, nextFilters);
+      }
+    },
+    [executeSearch, query]
   );
 
   const showEmpty =
     !isLoading && hasSearched && query.trim() !== "" && results.length === 0 && !error;
+
+  const activeFilterLabels = [
+    filters.rarity && `rarity: ${filters.rarity}`,
+    filters.setName && `set: ${filters.setName}`,
+  ].filter(Boolean);
 
   return (
     <div className="relative min-h-screen">
@@ -73,6 +93,8 @@ export default function HomePage() {
             query={query}
             onQueryChange={setQuery}
             onSearch={handleSearch}
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
             isLoading={isLoading}
             inputRef={searchInputRef}
           />
@@ -88,6 +110,12 @@ export default function HomePage() {
               <p className="mb-6 text-sm text-white/40">
                 {results.length} result{results.length !== 1 ? "s" : ""} for
                 &ldquo;{query}&rdquo;
+                {activeFilterLabels.length > 0 && (
+                  <span className="text-white/25">
+                    {" "}
+                    · filtered by {activeFilterLabels.join(", ")}
+                  </span>
+                )}
               </p>
             )}
 

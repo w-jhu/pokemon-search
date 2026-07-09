@@ -44,10 +44,32 @@ function mapMatchToCard(
   };
 }
 
+function buildMetadataFilter(
+  rarity?: string,
+  setName?: string
+): Record<string, unknown> | undefined {
+  const conditions: Record<string, unknown>[] = [];
+
+  if (rarity) {
+    conditions.push({ rarity: { $eq: rarity } });
+  }
+  if (setName) {
+    conditions.push({ setName: { $eq: setName } });
+  }
+
+  if (conditions.length === 0) return undefined;
+  if (conditions.length === 1) return conditions[0];
+  return { $and: conditions };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const query = typeof body.query === "string" ? body.query.trim() : "";
+    const rarity =
+      typeof body.rarity === "string" ? body.rarity.trim() : "";
+    const setName =
+      typeof body.setName === "string" ? body.setName.trim() : "";
 
     if (!query) {
       return NextResponse.json(
@@ -82,10 +104,13 @@ export async function POST(request: NextRequest) {
     const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
     const index = pinecone.index(INDEX_NAME);
 
+    const filter = buildMetadataFilter(rarity || undefined, setName || undefined);
+
     const queryResponse = await index.query({
       vector,
       topK: TOP_K,
       includeMetadata: true,
+      ...(filter ? { filter } : {}),
     });
 
     const cards: PokemonCard[] = (queryResponse.matches ?? []).map((match) =>

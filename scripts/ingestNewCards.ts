@@ -108,9 +108,7 @@ function extractRetryDelayMs(
     return Math.ceil(parseFloat(msMatch[1]));
   }
 
-  const secondsMatch = message.match(
-    /try again in ([\d.]+)\s*s(?:ec(?:ond)?s?)?/i
-  );
+  const secondsMatch = message.match(/try again in ([\d.]+)\s*s(?:ec(?:ond)?s?)?/i);
   if (secondsMatch) {
     return Math.ceil(parseFloat(secondsMatch[1]) * 1000);
   }
@@ -186,8 +184,7 @@ const pokemonTcgHeaders: HeadersInit = {
 // ─── API Functions ───────────────────────────────────────────────────────────
 
 async function fetchCardsPage(page: number): Promise<PokemonTcgResponse> {
-  // Default API order — walk the full catalog page by page
-  const url = `${POKEMON_TCG_BASE_URL}?pageSize=${PAGE_SIZE}&page=${page}`;
+  const url = `${POKEMON_TCG_BASE_URL}?pageSize=${PAGE_SIZE}&page=${page}&orderBy=-set.releaseDate`;
   const response = await fetch(url, { headers: pokemonTcgHeaders });
 
   if (!response.ok) {
@@ -199,10 +196,9 @@ async function fetchCardsPage(page: number): Promise<PokemonTcgResponse> {
   return response.json() as Promise<PokemonTcgResponse>;
 }
 
-async function getExistingCardIds(cardIds: string[]): Promise<Set<string>> {
-  if (cardIds.length === 0) return new Set();
-  const fetchResponse = await index.fetch({ ids: cardIds });
-  return new Set(Object.keys(fetchResponse.records));
+async function cardExistsInPinecone(cardId: string): Promise<boolean> {
+  const fetchResponse = await index.fetch({ ids: [cardId] });
+  return Boolean(fetchResponse.records[cardId]);
 }
 
 async function generateSearchString(imageUrl: string): Promise<string> {
@@ -275,13 +271,20 @@ async function processCard(
   page: number,
   cardIndex: number,
   totalInPage: number
-): Promise<"success" | "skipped" | "failed"> {
+): Promise<"success" | "skipped" | "failed" | "boundary"> {
   const label = `Processing Page ${page}: Card ${cardIndex}/${totalInPage} - ${card.name}`;
 
   const imageUrl = card.images?.large;
   if (!imageUrl) {
     console.log(`${label}... Skipped (no images.large)`);
     return "skipped";
+  }
+
+  if (await cardExistsInPinecone(card.id)) {
+    console.log(
+      `Hit existing card boundary (${card.name}). Database is up to date. Exiting script cleanly.`
+    );
+    return "boundary";
   }
 
   try {
@@ -314,16 +317,16 @@ async function processCard(
 
 async function main(): Promise<void> {
   console.log("═".repeat(60));
-  console.log("Pokémon Card Art Ingest (full catalog)");
+  console.log("Pokémon Card Art Ingest (new cards only)");
   console.log(
-    `Index: ${INDEX_NAME} | Skips cards already in Pinecone | Continues through all pages`
+    `Index: ${INDEX_NAME} | Sorted by newest release | Auto-stops at existing cards`
   );
   console.log("═".repeat(60));
 
   let totalSuccess = 0;
-  let totalSkippedNoImage = 0;
-  let totalSkippedExisting = 0;
+  let totalSkipped = 0;
   let totalFailed = 0;
+  let hitBoundary = false;
 
   for (let page = 1; page <= MAX_PAGES; page++) {
     console.log(`\nFetching page ${page}...`);
@@ -347,33 +350,24 @@ async function main(): Promise<void> {
       break;
     }
 
-    // Batch-check which cards already exist (50 IDs at a time)
-    const existingIds = await getExistingCardIds(batch.map((c) => c.id));
-
     for (let i = 0; i < batch.length; i++) {
-      const card = batch[i];
-      const label = `Processing Page ${page}: Card ${i + 1}/${batch.length} - ${card.name}`;
+      const result = await processCard(batch[i], page, i + 1, batch.length);
 
-      if (existingIds.has(card.id)) {
-        console.log(`${label}... Skipped (already in Pinecone)`);
-        totalSkippedExisting++;
-        continue;
+      if (result === "boundary") {
+        hitBoundary = true;
+        break;
       }
-
-      if (!card.images?.large) {
-        console.log(`${label}... Skipped (no images.large)`);
-        totalSkippedNoImage++;
-        continue;
-      }
-
-      const result = await processCard(card, page, i + 1, batch.length);
 
       if (result === "success") totalSuccess++;
-      else if (result === "skipped") totalSkippedNoImage++;
+      else if (result === "skipped") totalSkipped++;
       else totalFailed++;
 
-      await sleep(CARD_DELAY_MS);
+      if (i < batch.length - 1) {
+        await sleep(CARD_DELAY_MS);
+      }
     }
+
+    if (hitBoundary) break;
 
     if (page < MAX_PAGES) {
       console.log(`\nWaiting ${PAGE_DELAY_MS}ms before next page...`);
@@ -382,11 +376,10 @@ async function main(): Promise<void> {
   }
 
   console.log("\n" + "═".repeat(60));
-  console.log("Full catalog ingest complete");
-  console.log(`  Success:           ${totalSuccess}`);
-  console.log(`  Skipped (exists):  ${totalSkippedExisting}`);
-  console.log(`  Skipped (no img):  ${totalSkippedNoImage}`);
-  console.log(`  Failed:            ${totalFailed}`);
+  console.log("Ingest complete");
+  console.log(`  Success: ${totalSuccess}`);
+  console.log(`  Skipped: ${totalSkipped}`);
+  console.log(`  Failed:  ${totalFailed}`);
   console.log("═".repeat(60));
 }
 

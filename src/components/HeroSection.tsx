@@ -1,12 +1,16 @@
 "use client";
 
 import SearchBar from "./SearchBar";
+import SearchFiltersBar from "./SearchFiltersBar";
 import { sampleSearches } from "@/data/mockCards";
+import { SearchFilters } from "@/data/filterOptions";
 
 interface HeroSectionProps {
   query: string;
   onQueryChange: (query: string) => void;
   onSearch: (query: string) => void;
+  filters: SearchFilters;
+  onFiltersChange: (filters: SearchFilters) => void;
   isLoading?: boolean;
   inputRef?: React.RefObject<HTMLInputElement | null>;
 }
@@ -15,6 +19,8 @@ export default function HeroSection({
   query,
   onQueryChange,
   onSearch,
+  filters,
+  onFiltersChange,
   isLoading = false,
   inputRef,
 }: HeroSectionProps) {
@@ -30,6 +36,12 @@ export default function HeroSection({
         onSearch={onSearch}
         isLoading={isLoading}
         inputRef={inputRef}
+      />
+
+      <SearchFiltersBar
+        filters={filters}
+        onChange={onFiltersChange}
+        disabled={isLoading}
       />
 
       <div className="mt-6 flex max-w-2xl flex-wrap items-center justify-center gap-2">

@@ -1,10 +1,18 @@
 import { PokemonCard } from "@/types/pokemon";
+import { SearchFilters } from "@/data/filterOptions";
 
-export async function searchCards(query: string): Promise<PokemonCard[]> {
+export async function searchCards(
+  query: string,
+  filters: SearchFilters = { rarity: "", setName: "" }
+): Promise<PokemonCard[]> {
   const response = await fetch("/api/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({
+      query,
+      rarity: filters.rarity || undefined,
+      setName: filters.setName || undefined,
+    }),
   });
 
   if (!response.ok) {
