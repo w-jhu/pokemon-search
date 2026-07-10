@@ -2,6 +2,7 @@
 
 import { Info, ZoomIn } from "lucide-react";
 import { PokemonCard, LayoutDensity } from "@/types/pokemon";
+import { isDebugMode } from "@/lib/appMode";
 
 interface PokemonCardItemProps {
   card: PokemonCard;
@@ -17,6 +18,7 @@ export default function PokemonCardItem({
   onZoomClick,
 }: PokemonCardItemProps) {
   const isList = layout === "list";
+  const showScore = isDebugMode() && typeof card.score === "number";
 
   return (
     <article
@@ -60,12 +62,12 @@ export default function PokemonCardItem({
       <div className={`flex flex-1 flex-col ${isList ? "justify-center py-1" : "p-4"}`}>
         <div className="flex items-start justify-between gap-2">
           <h3 className="font-semibold tracking-tight text-white">{card.name}</h3>
-          {typeof card.score === "number" && (
+          {showScore && (
             <span
               className="shrink-0 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-white/50"
               title="Pinecone similarity score"
             >
-              {card.score.toFixed(3)}
+              {card.score!.toFixed(3)}
             </span>
           )}
         </div>

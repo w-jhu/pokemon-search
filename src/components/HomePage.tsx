@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { searchCards, SearchMeta } from "@/lib/api";
 import { LayoutDensity, PokemonCard } from "@/types/pokemon";
 import { EMPTY_FILTERS, SearchFilters } from "@/data/filterOptions";
+import { isDebugMode } from "@/lib/appMode";
 import Navbar from "./Navbar";
 import HeroSection from "./HeroSection";
 import CardGrid from "./CardGrid";
@@ -13,6 +14,7 @@ import AboutModal from "./AboutModal";
 import LoadingSkeleton from "./LoadingSkeleton";
 import EmptyState from "./EmptyState";
 import Pagination from "./Pagination";
+import DebugBadge from "./DebugBadge";
 
 const PAGE_SIZE = 12;
 
@@ -116,6 +118,7 @@ export default function HomePage() {
 
   const rangeStart = results.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PAGE_SIZE, results.length);
+  const showDebugMeta = isDebugMode();
 
   return (
     <div className="relative min-h-screen">
@@ -152,7 +155,7 @@ export default function HomePage() {
               </p>
             )}
 
-            {!isLoading && hasSearched && (results.length > 0 || searchMeta) && (
+            {!isLoading && hasSearched && (results.length > 0 || (showDebugMeta && searchMeta)) && (
               <div className="mb-6 space-y-2">
                 {results.length > 0 ? (
                   <p className="text-sm text-white/40">
@@ -169,7 +172,7 @@ export default function HomePage() {
                     )}
                   </p>
                 ) : null}
-                {searchMeta && (
+                {showDebugMeta && searchMeta && (
                   <p className="font-mono text-[11px] tracking-wide text-white/30">
                     {searchMeta.llmEnabled === false
                       ? `debug · pinecone ${searchMeta.retrieved} · AI filter off · showing ${searchMeta.kept}`
@@ -205,6 +208,7 @@ export default function HomePage() {
       <CardModal card={selectedCard} onClose={() => setSelectedCard(null)} />
       <CardZoom card={zoomedCard} onClose={() => setZoomedCard(null)} />
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <DebugBadge />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { PokemonCard } from "@/types/pokemon";
+import { isDebugMode } from "@/lib/appMode";
 
 const INDEX_NAME = "pokemon-card-art";
 const TOP_K = 36;
@@ -86,6 +87,21 @@ function truncate(text: string, maxChars: number): string {
 
 function sortByScoreDesc(cards: PokemonCard[]): PokemonCard[] {
   return [...cards].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+}
+
+function stripScoresForClient(cards: PokemonCard[]): PokemonCard[] {
+  if (isDebugMode()) return cards;
+  return cards.map(({ score: _score, ...card }) => card);
+}
+
+function buildSearchResponse(cards: PokemonCard[], meta: Record<string, unknown>) {
+  const payload: { cards: PokemonCard[]; meta?: Record<string, unknown> } = {
+    cards: stripScoresForClient(cards),
+  };
+  if (isDebugMode()) {
+    payload.meta = meta;
+  }
+  return NextResponse.json(payload);
 }
 
 async function filterRelevantCardIds(
@@ -211,17 +227,14 @@ export async function POST(request: NextRequest) {
 
     // Instant mode: skip LLM and return Pinecone ranking directly
     if (!useLlmFilter) {
-      return NextResponse.json({
-        cards: allMatches,
-        meta: {
-          retrieved: allMatches.length,
-          candidates: 0,
-          kept: allMatches.length,
-          filtered: false,
-          minScore: MIN_PINECONE_SCORE,
-          toppedUp: false,
-          llmEnabled: false,
-        },
+      return buildSearchResponse(allMatches, {
+        retrieved: allMatches.length,
+        candidates: 0,
+        kept: allMatches.length,
+        filtered: false,
+        minScore: MIN_PINECONE_SCORE,
+        toppedUp: false,
+        llmEnabled: false,
       });
     }
 
@@ -238,17 +251,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      cards,
-      meta: {
-        retrieved: allMatches.length,
-        candidates: candidates.length,
-        kept: cards.length,
-        filtered: includedIds !== null,
-        minScore: MIN_PINECONE_SCORE,
-        toppedUp: aboveThreshold.length < MIN_LLM_CANDIDATES,
-        llmEnabled: true,
-      },
+    return buildSearchResponse(cards, {
+      retrieved: allMatches.length,
+      candidates: candidates.length,
+      kept: cards.length,
+      filtered: includedIds !== null,
+      minScore: MIN_PINECONE_SCORE,
+      toppedUp: aboveThreshold.length < MIN_LLM_CANDIDATES,
+      llmEnabled: true,
     });
   } catch (error) {
     console.error("Search API error:", error);
