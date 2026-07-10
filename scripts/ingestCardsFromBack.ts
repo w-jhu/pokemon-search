@@ -14,9 +14,6 @@ const CARD_DELAY_MS = 500;
 const PAGE_DELAY_MS = 2000;
 const INDEX_NAME = "pokemon-card-art";
 
-/** Stop after this many consecutive pages with zero new cards (met the other worker). */
-const CONSECUTIVE_COVERED_PAGES_TO_STOP = 5;
-
 const POKEMON_TCG_BASE_URL = "https://api.pokemontcg.io/v2/cards";
 
 const VISION_SYSTEM_PROMPT =
@@ -317,7 +314,7 @@ async function main(): Promise<void> {
   console.log("═".repeat(60));
   console.log("Pokémon Card Art Ingest (from back → front)");
   console.log(
-    `Index: ${INDEX_NAME} | Skips existing | Stops after ${CONSECUTIVE_COVERED_PAGES_TO_STOP} fully-covered pages`
+    `Index: ${INDEX_NAME} | Skips existing | Walks last page → 1`
   );
   console.log("═".repeat(60));
 
@@ -334,7 +331,6 @@ async function main(): Promise<void> {
   let totalSkippedNoImage = 0;
   let totalSkippedExisting = 0;
   let totalFailed = 0;
-  let consecutiveCoveredPages = 0;
 
   for (let page = lastPage; page >= 1; page--) {
     console.log(`\n[BACK] Fetching page ${page}/${lastPage}...`);
@@ -394,19 +390,8 @@ async function main(): Promise<void> {
     }
 
     if (pageSuccess === 0) {
-      consecutiveCoveredPages++;
-      console.log(
-        `[BACK] Page ${page}: no new cards (${consecutiveCoveredPages}/${CONSECUTIVE_COVERED_PAGES_TO_STOP} consecutive covered pages)`
-      );
-
-      if (consecutiveCoveredPages >= CONSECUTIVE_COVERED_PAGES_TO_STOP) {
-        console.log(
-          `\n[BACK] Hit ${CONSECUTIVE_COVERED_PAGES_TO_STOP} consecutive fully-covered pages — likely met the forward ingest. Exiting cleanly.`
-        );
-        break;
-      }
+      console.log(`[BACK] Page ${page}: no new cards`);
     } else {
-      consecutiveCoveredPages = 0;
       console.log(`[BACK] Page ${page}: ingested ${pageSuccess} new cards`);
     }
 
