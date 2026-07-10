@@ -173,6 +173,20 @@ async function appendFailedCard(
   await writeFile(FAILED_CARDS_PATH, JSON.stringify(existing, null, 2) + "\n");
 }
 
+function parseStartPage(defaultPage: number): number {
+  const arg = process.argv[2];
+  if (arg === undefined) return defaultPage;
+
+  const page = Number.parseInt(arg, 10);
+  if (!Number.isInteger(page) || page < 1) {
+    console.error(
+      `Invalid start page "${arg}". Pass a positive integer, e.g. npm run ingest -- 42`
+    );
+    process.exit(1);
+  }
+  return page;
+}
+
 // ─── Clients ─────────────────────────────────────────────────────────────────
 
 const openai = new OpenAI({ apiKey: requireEnv("OPENAI_API_KEY") });
@@ -313,10 +327,12 @@ async function processCard(
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  const startPage = parseStartPage(1);
+
   console.log("═".repeat(60));
   console.log("Pokémon Card Art Ingest (full catalog)");
   console.log(
-    `Index: ${INDEX_NAME} | Skips cards already in Pinecone | Continues through all pages`
+    `Index: ${INDEX_NAME} | Skips cards already in Pinecone | Starts at page ${startPage}`
   );
   console.log("═".repeat(60));
 
@@ -325,7 +341,7 @@ async function main(): Promise<void> {
   let totalSkippedExisting = 0;
   let totalFailed = 0;
 
-  for (let page = 1; page <= MAX_PAGES; page++) {
+  for (let page = startPage; page <= MAX_PAGES; page++) {
     console.log(`\nFetching page ${page}...`);
 
     let batch: PokemonTcgCard[];

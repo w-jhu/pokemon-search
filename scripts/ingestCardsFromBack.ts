@@ -172,6 +172,20 @@ async function appendFailedCard(
   await writeFile(FAILED_CARDS_PATH, JSON.stringify(existing, null, 2) + "\n");
 }
 
+function parseStartPage(defaultPage: number): number | undefined {
+  const arg = process.argv[2];
+  if (arg === undefined) return undefined;
+
+  const page = Number.parseInt(arg, 10);
+  if (!Number.isInteger(page) || page < 1) {
+    console.error(
+      `Invalid start page "${arg}". Pass a positive integer, e.g. npm run ingest:back -- 300`
+    );
+    process.exit(1);
+  }
+  return page;
+}
+
 // ─── Clients ─────────────────────────────────────────────────────────────────
 
 const openai = new OpenAI({ apiKey: requireEnv("OPENAI_API_KEY") });
@@ -313,9 +327,7 @@ async function processCard(
 async function main(): Promise<void> {
   console.log("═".repeat(60));
   console.log("Pokémon Card Art Ingest (from back → front)");
-  console.log(
-    `Index: ${INDEX_NAME} | Skips existing | Walks last page → 1`
-  );
+  console.log(`Index: ${INDEX_NAME} | Skips existing | Walks toward page 1`);
   console.log("═".repeat(60));
 
   console.log("\nResolving last page from API...");
@@ -323,8 +335,20 @@ async function main(): Promise<void> {
   const totalCount = firstPage.totalCount;
   const lastPage = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
+  const requestedStart = parseStartPage(lastPage);
+  const startPage =
+    requestedStart === undefined
+      ? lastPage
+      : Math.min(requestedStart, lastPage);
+
+  if (requestedStart !== undefined && requestedStart > lastPage) {
+    console.log(
+      `Requested page ${requestedStart} is past last page ${lastPage} — starting at ${lastPage} instead.`
+    );
+  }
+
   console.log(
-    `Catalog: ${totalCount} cards → pages 1–${lastPage} (walking ${lastPage} → 1)`
+    `Catalog: ${totalCount} cards → pages 1–${lastPage} (walking ${startPage} → 1)`
   );
 
   let totalSuccess = 0;
@@ -332,7 +356,7 @@ async function main(): Promise<void> {
   let totalSkippedExisting = 0;
   let totalFailed = 0;
 
-  for (let page = lastPage; page >= 1; page--) {
+  for (let page = startPage; page >= 1; page--) {
     console.log(`\n[BACK] Fetching page ${page}/${lastPage}...`);
 
     let batch: PokemonTcgCard[];
