@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "PokeArt.ai — Semantic Pokémon Card Art Search",
   description:
-    "Search the hidden details within Pokémon card illustrations using AI-powered semantic search.",
+    "Find the card you're looking for.",
 };
 
 export default function RootLayout({
