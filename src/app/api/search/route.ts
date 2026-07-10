@@ -28,6 +28,10 @@ Ignore energy symbols, attacks, and frame chrome.
 JSON only: { "include": ["id1", ...] }
 Use only provided ids. If none qualify: { "include": [] }`;
 
+function normalizeQuery(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function getString(
   metadata: Record<string, unknown>,
   ...keys: string[]
@@ -178,7 +182,8 @@ function publicErrorMessage(error: unknown): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const query = typeof body.query === "string" ? body.query.trim() : "";
+    const query =
+      typeof body.query === "string" ? normalizeQuery(body.query) : "";
     const rarity =
       typeof body.rarity === "string" ? body.rarity.trim() : "";
     const setName =
