@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { X, Sparkles } from "lucide-react";
 import {
   RARITY_OPTIONS,
   SET_OPTIONS,
@@ -11,12 +11,16 @@ import {
 interface SearchFiltersBarProps {
   filters: SearchFilters;
   onChange: (filters: SearchFilters) => void;
+  useLlmFilter: boolean;
+  onLlmFilterChange: (enabled: boolean) => void;
   disabled?: boolean;
 }
 
 export default function SearchFiltersBar({
   filters,
   onChange,
+  useLlmFilter,
+  onLlmFilterChange,
   disabled = false,
 }: SearchFiltersBarProps) {
   const hasActiveFilters = Boolean(filters.rarity || filters.setName);
@@ -79,17 +83,46 @@ export default function SearchFiltersBar({
         </label>
       </div>
 
-      {hasActiveFilters && (
+      <div className="flex w-full flex-wrap items-center justify-between gap-3">
         <button
           type="button"
+          role="switch"
+          aria-checked={useLlmFilter}
           disabled={disabled}
-          onClick={() => onChange(EMPTY_FILTERS)}
-          className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/45 transition-all duration-200 hover:border-white/20 hover:bg-white/10 hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => onLlmFilterChange(!useLlmFilter)}
+          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40 ${
+            useLlmFilter
+              ? "border-white/20 bg-white/10 text-white/80"
+              : "border-white/10 bg-white/5 text-white/40 hover:border-white/20 hover:text-white/60"
+          }`}
         >
-          <X className="h-3 w-3" />
-          Clear filters
+          <Sparkles className="h-3 w-3" />
+          AI filter {useLlmFilter ? "on" : "off"}
+          <span
+            className={`relative h-4 w-7 rounded-full transition-colors duration-200 ${
+              useLlmFilter ? "bg-white/30" : "bg-white/10"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform duration-200 ${
+                useLlmFilter ? "left-3.5" : "left-0.5"
+              }`}
+            />
+          </span>
         </button>
-      )}
+
+        {hasActiveFilters && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(EMPTY_FILTERS)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/45 transition-all duration-200 hover:border-white/20 hover:bg-white/10 hover:text-white/70 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <X className="h-3 w-3" />
+            Clear filters
+          </button>
+        )}
+      </div>
     </div>
   );
 }

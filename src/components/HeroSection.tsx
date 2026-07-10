@@ -11,6 +11,8 @@ interface HeroSectionProps {
   onSearch: (query: string) => void;
   filters: SearchFilters;
   onFiltersChange: (filters: SearchFilters) => void;
+  useLlmFilter: boolean;
+  onLlmFilterChange: (enabled: boolean) => void;
   isLoading?: boolean;
   inputRef?: React.RefObject<HTMLInputElement | null>;
 }
@@ -21,6 +23,8 @@ export default function HeroSection({
   onSearch,
   filters,
   onFiltersChange,
+  useLlmFilter,
+  onLlmFilterChange,
   isLoading = false,
   inputRef,
 }: HeroSectionProps) {
@@ -41,6 +45,8 @@ export default function HeroSection({
       <SearchFiltersBar
         filters={filters}
         onChange={onFiltersChange}
+        useLlmFilter={useLlmFilter}
+        onLlmFilterChange={onLlmFilterChange}
         disabled={isLoading}
       />
 

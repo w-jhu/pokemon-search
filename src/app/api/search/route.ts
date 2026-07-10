@@ -4,7 +4,22 @@ import { Pinecone } from "@pinecone-database/pinecone";
 import { PokemonCard } from "@/types/pokemon";
 
 const INDEX_NAME = "pokemon-card-art";
-const TOP_K = 12;
+const TOP_K = 36;
+const MIN_PINECONE_SCORE = 0.2;
+const MIN_LLM_CANDIDATES = 12;
+const RERANK_MODEL = "gpt-4o-mini";
+const MAX_DESCRIPTION_CHARS = 400;
+
+const FILTER_SYSTEM_PROMPT = `Strict filter for Pokémon card art search. Return which candidate ids to INCLUDE.
+
+INCLUDE only if the query term (or a clear synonym) appears explicitly in the card name or art description as a depicted subject, setting, weather, color, mood, or art medium.
+EXCLUDE if merely related, implied, same habitat/category, or "close enough." When unsure, EXCLUDE.
+
+Examples of EXCLUDE: "snow" ≠ rocky/brown terrain; "whale" ≠ seal or generic ocean; "watercolor" ≠ polished anime art.
+Ignore energy symbols, attacks, and frame chrome.
+
+JSON only: { "include": ["id1", ...] }
+Use only provided ids. If none qualify: { "include": [] }`;
 
 function getString(
   metadata: Record<string, unknown>,
@@ -19,7 +34,8 @@ function getString(
 
 function mapMatchToCard(
   id: string,
-  metadata: Record<string, unknown>
+  metadata: Record<string, unknown>,
+  score?: number
 ): PokemonCard {
   return {
     id,
@@ -41,6 +57,7 @@ function mapMatchToCard(
     keywords: Array.isArray(metadata.keywords)
       ? metadata.keywords.filter((k): k is string => typeof k === "string")
       : [],
+    score,
   };
 }
 
@@ -62,6 +79,64 @@ function buildMetadataFilter(
   return { $and: conditions };
 }
 
+function truncate(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars - 1)}…`;
+}
+
+function sortByScoreDesc(cards: PokemonCard[]): PokemonCard[] {
+  return [...cards].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+}
+
+async function filterRelevantCardIds(
+  openai: OpenAI,
+  query: string,
+  cards: PokemonCard[]
+): Promise<string[] | null> {
+  if (cards.length === 0) return [];
+
+  const candidates = cards.map((card) => ({
+    id: card.id,
+    name: card.name,
+    description: truncate(card.artDescription, MAX_DESCRIPTION_CHARS),
+  }));
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: RERANK_MODEL,
+      response_format: { type: "json_object" },
+      temperature: 0,
+      messages: [
+        { role: "system", content: FILTER_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: JSON.stringify({ query, candidates }),
+        },
+      ],
+    });
+
+    const raw = completion.choices[0]?.message?.content;
+    if (!raw) {
+      console.warn("Relevance filter returned empty content; falling back.");
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as { include?: unknown };
+    if (!Array.isArray(parsed.include)) {
+      console.warn("Relevance filter JSON missing include array; falling back.");
+      return null;
+    }
+
+    const allowed = new Set(cards.map((card) => card.id));
+    return parsed.include.filter(
+      (id): id is string => typeof id === "string" && allowed.has(id)
+    );
+  } catch (error) {
+    console.error("Relevance filter failed; falling back to Pinecone order:", error);
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -70,6 +145,7 @@ export async function POST(request: NextRequest) {
       typeof body.rarity === "string" ? body.rarity.trim() : "";
     const setName =
       typeof body.setName === "string" ? body.setName.trim() : "";
+    const useLlmFilter = body.useLlmFilter !== false;
 
     if (!query) {
       return NextResponse.json(
@@ -113,11 +189,67 @@ export async function POST(request: NextRequest) {
       ...(filter ? { filter } : {}),
     });
 
-    const cards: PokemonCard[] = (queryResponse.matches ?? []).map((match) =>
-      mapMatchToCard(match.id, (match.metadata ?? {}) as Record<string, unknown>)
+    const allMatches: PokemonCard[] = sortByScoreDesc(
+      (queryResponse.matches ?? []).map((match) =>
+        mapMatchToCard(
+          match.id,
+          (match.metadata ?? {}) as Record<string, unknown>,
+          match.score
+        )
+      )
     );
 
-    return NextResponse.json({ cards });
+    // Prefer score > 0.2, but always send at least 12 candidates to the LLM
+    // (or all matches if fewer than 12 were retrieved).
+    const aboveThreshold = allMatches.filter(
+      (card) => (card.score ?? 0) > MIN_PINECONE_SCORE
+    );
+    const candidates =
+      aboveThreshold.length >= MIN_LLM_CANDIDATES
+        ? aboveThreshold
+        : allMatches.slice(0, Math.min(MIN_LLM_CANDIDATES, allMatches.length));
+
+    // Instant mode: skip LLM and return Pinecone ranking directly
+    if (!useLlmFilter) {
+      return NextResponse.json({
+        cards: allMatches,
+        meta: {
+          retrieved: allMatches.length,
+          candidates: 0,
+          kept: allMatches.length,
+          filtered: false,
+          minScore: MIN_PINECONE_SCORE,
+          toppedUp: false,
+          llmEnabled: false,
+        },
+      });
+    }
+
+    const includedIds = await filterRelevantCardIds(openai, query, candidates);
+
+    let cards: PokemonCard[];
+    if (includedIds === null) {
+      // LLM failed — fall back to Pinecone ranking (top 12) so search still works
+      cards = candidates.slice(0, 12);
+    } else {
+      const includeSet = new Set(includedIds);
+      cards = sortByScoreDesc(
+        candidates.filter((card) => includeSet.has(card.id))
+      );
+    }
+
+    return NextResponse.json({
+      cards,
+      meta: {
+        retrieved: allMatches.length,
+        candidates: candidates.length,
+        kept: cards.length,
+        filtered: includedIds !== null,
+        minScore: MIN_PINECONE_SCORE,
+        toppedUp: aboveThreshold.length < MIN_LLM_CANDIDATES,
+        llmEnabled: true,
+      },
+    });
   } catch (error) {
     console.error("Search API error:", error);
     return NextResponse.json(

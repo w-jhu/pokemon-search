@@ -1,18 +1,20 @@
 "use client";
 
-import { Info } from "lucide-react";
+import { Info, ZoomIn } from "lucide-react";
 import { PokemonCard, LayoutDensity } from "@/types/pokemon";
 
 interface PokemonCardItemProps {
   card: PokemonCard;
   layout: LayoutDensity;
   onInfoClick: (card: PokemonCard) => void;
+  onZoomClick: (card: PokemonCard) => void;
 }
 
 export default function PokemonCardItem({
   card,
   layout,
   onInfoClick,
+  onZoomClick,
 }: PokemonCardItemProps) {
   const isList = layout === "list";
 
@@ -22,19 +24,22 @@ export default function PokemonCardItem({
         isList ? "flex gap-4 p-3" : "flex flex-col"
       }`}
     >
-      <div
-        className={`relative overflow-hidden bg-gradient-to-br from-white/5 to-white/[0.02] ${
+      <button
+        type="button"
+        onClick={() => onZoomClick(card)}
+        className={`relative cursor-zoom-in overflow-hidden bg-gradient-to-br from-white/5 to-white/[0.02] outline-none focus-visible:ring-2 focus-visible:ring-white/30 ${
           isList
             ? "h-28 w-20 shrink-0 rounded-xl"
             : "aspect-[2.5/3.5] w-full rounded-t-2xl"
         }`}
+        aria-label={`Zoom ${card.name}`}
       >
         {card.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={card.imageUrl}
             alt={`${card.name} card art`}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
           />
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4">
@@ -44,10 +49,26 @@ export default function PokemonCardItem({
             </span>
           </div>
         )}
-      </div>
+
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/25 group-hover:opacity-100">
+          <span className="rounded-full border border-white/20 bg-black/40 p-2 text-white/80 backdrop-blur-md">
+            <ZoomIn className="h-4 w-4" />
+          </span>
+        </span>
+      </button>
 
       <div className={`flex flex-1 flex-col ${isList ? "justify-center py-1" : "p-4"}`}>
-        <h3 className="font-semibold tracking-tight text-white">{card.name}</h3>
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-semibold tracking-tight text-white">{card.name}</h3>
+          {typeof card.score === "number" && (
+            <span
+              className="shrink-0 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-white/50"
+              title="Pinecone similarity score"
+            >
+              {card.score.toFixed(3)}
+            </span>
+          )}
+        </div>
         <p className="mt-0.5 text-xs text-white/45">{card.setName}</p>
         <p className="mt-1 text-[11px] font-medium uppercase tracking-wider text-white/30">
           {card.rarity}

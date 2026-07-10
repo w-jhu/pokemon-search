@@ -8,4 +8,6 @@ export interface PokemonCard {
   imageUrl?: string;
   artDescription: string;
   keywords: string[];
+  /** Pinecone similarity score — temporary, for choosing a cutoff */
+  score?: number;
 }

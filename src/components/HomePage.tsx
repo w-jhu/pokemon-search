@@ -1,45 +1,70 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { searchCards } from "@/lib/api";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { searchCards, SearchMeta } from "@/lib/api";
 import { LayoutDensity, PokemonCard } from "@/types/pokemon";
 import { EMPTY_FILTERS, SearchFilters } from "@/data/filterOptions";
 import Navbar from "./Navbar";
 import HeroSection from "./HeroSection";
 import CardGrid from "./CardGrid";
 import CardModal from "./CardModal";
+import CardZoom from "./CardZoom";
 import AboutModal from "./AboutModal";
 import LoadingSkeleton from "./LoadingSkeleton";
 import EmptyState from "./EmptyState";
+import Pagination from "./Pagination";
+
+const PAGE_SIZE = 12;
 
 export default function HomePage() {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
+  const [useLlmFilter, setUseLlmFilter] = useState(true);
   const [results, setResults] = useState<PokemonCard[]>([]);
+  const [searchMeta, setSearchMeta] = useState<SearchMeta | null>(null);
+  const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [layout, setLayout] = useState<LayoutDensity>("grid");
   const [selectedCard, setSelectedCard] = useState<PokemonCard | null>(null);
+  const [zoomedCard, setZoomedCard] = useState<PokemonCard | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [fadeKey, setFadeKey] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  const totalPages = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
+  const pageCards = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return results.slice(start, start + PAGE_SIZE);
+  }, [results, page]);
+
   const executeSearch = useCallback(
-    async (searchQuery: string, searchFilters: SearchFilters) => {
+    async (
+      searchQuery: string,
+      searchFilters: SearchFilters,
+      llmEnabled: boolean
+    ) => {
       const trimmed = searchQuery.trim();
       if (!trimmed) return;
 
       setIsLoading(true);
       setError(null);
       setHasSearched(true);
+      setPage(1);
 
       try {
-        const cards = await searchCards(trimmed, searchFilters);
+        const { cards, meta } = await searchCards(
+          trimmed,
+          searchFilters,
+          llmEnabled
+        );
         setResults(cards);
+        setSearchMeta(meta ?? null);
         setFadeKey((k) => k + 1);
       } catch (err) {
         setResults([]);
+        setSearchMeta(null);
         setError(err instanceof Error ? err.message : "Search failed.");
       } finally {
         setIsLoading(false);
@@ -50,20 +75,36 @@ export default function HomePage() {
 
   const handleSearch = useCallback(
     (searchQuery: string) => {
-      executeSearch(searchQuery, filters);
+      executeSearch(searchQuery, filters, useLlmFilter);
     },
-    [executeSearch, filters]
+    [executeSearch, filters, useLlmFilter]
   );
 
   const handleFiltersChange = useCallback(
     (nextFilters: SearchFilters) => {
       setFilters(nextFilters);
       if (query.trim()) {
-        executeSearch(query, nextFilters);
+        executeSearch(query, nextFilters, useLlmFilter);
       }
     },
-    [executeSearch, query]
+    [executeSearch, query, useLlmFilter]
   );
+
+  const handleLlmFilterChange = useCallback(
+    (enabled: boolean) => {
+      setUseLlmFilter(enabled);
+      if (query.trim()) {
+        executeSearch(query, filters, enabled);
+      }
+    },
+    [executeSearch, query, filters]
+  );
+
+  const handlePageChange = useCallback((nextPage: number) => {
+    setPage(nextPage);
+    setFadeKey((k) => k + 1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
 
   const showEmpty =
     !isLoading && hasSearched && query.trim() !== "" && results.length === 0 && !error;
@@ -72,6 +113,9 @@ export default function HomePage() {
     filters.rarity && `rarity: ${filters.rarity}`,
     filters.setName && `set: ${filters.setName}`,
   ].filter(Boolean);
+
+  const rangeStart = results.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * PAGE_SIZE, results.length);
 
   return (
     <div className="relative min-h-screen">
@@ -95,6 +139,8 @@ export default function HomePage() {
             onSearch={handleSearch}
             filters={filters}
             onFiltersChange={handleFiltersChange}
+            useLlmFilter={useLlmFilter}
+            onLlmFilterChange={handleLlmFilterChange}
             isLoading={isLoading}
             inputRef={searchInputRef}
           />
@@ -106,17 +152,31 @@ export default function HomePage() {
               </p>
             )}
 
-            {!isLoading && hasSearched && results.length > 0 && (
-              <p className="mb-6 text-sm text-white/40">
-                {results.length} result{results.length !== 1 ? "s" : ""} for
-                &ldquo;{query}&rdquo;
-                {activeFilterLabels.length > 0 && (
-                  <span className="text-white/25">
-                    {" "}
-                    · filtered by {activeFilterLabels.join(", ")}
-                  </span>
+            {!isLoading && hasSearched && (results.length > 0 || searchMeta) && (
+              <div className="mb-6 space-y-2">
+                {results.length > 0 ? (
+                  <p className="text-sm text-white/40">
+                    {`${results.length} ${results.length === 1 ? "result" : "results"} for “${query}”`}
+                    {totalPages > 1 && (
+                      <span className="text-white/25">
+                        {` · showing ${rangeStart}–${rangeEnd}`}
+                      </span>
+                    )}
+                    {activeFilterLabels.length > 0 && (
+                      <span className="text-white/25">
+                        {` · filtered by ${activeFilterLabels.join(", ")}`}
+                      </span>
+                    )}
+                  </p>
+                ) : null}
+                {searchMeta && (
+                  <p className="font-mono text-[11px] tracking-wide text-white/30">
+                    {searchMeta.llmEnabled === false
+                      ? `debug · pinecone ${searchMeta.retrieved} · AI filter off · showing ${searchMeta.kept}`
+                      : `debug · pinecone ${searchMeta.retrieved} · sent to LLM ${searchMeta.candidates} (score > ${searchMeta.minScore}${searchMeta.toppedUp ? ", topped up to 12" : ""}) · kept ${searchMeta.kept}${!searchMeta.filtered ? " · LLM fallback" : ""}`}
+                  </p>
                 )}
-              </p>
+              </div>
             )}
 
             {isLoading ? (
@@ -126,9 +186,15 @@ export default function HomePage() {
             ) : hasSearched && results.length > 0 ? (
               <div key={fadeKey} className="animate-in fade-in duration-500">
                 <CardGrid
-                  cards={results}
+                  cards={pageCards}
                   layout={layout}
                   onInfoClick={setSelectedCard}
+                  onZoomClick={setZoomedCard}
+                />
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  onPageChange={handlePageChange}
                 />
               </div>
             ) : null}
@@ -137,6 +203,7 @@ export default function HomePage() {
       </div>
 
       <CardModal card={selectedCard} onClose={() => setSelectedCard(null)} />
+      <CardZoom card={zoomedCard} onClose={() => setZoomedCard(null)} />
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   );

@@ -7,9 +7,15 @@ interface CardGridProps {
   cards: PokemonCard[];
   layout: LayoutDensity;
   onInfoClick: (card: PokemonCard) => void;
+  onZoomClick: (card: PokemonCard) => void;
 }
 
-export default function CardGrid({ cards, layout, onInfoClick }: CardGridProps) {
+export default function CardGrid({
+  cards,
+  layout,
+  onInfoClick,
+  onZoomClick,
+}: CardGridProps) {
   const isList = layout === "list";
 
   return (
@@ -26,6 +32,7 @@ export default function CardGrid({ cards, layout, onInfoClick }: CardGridProps) 
           card={card}
           layout={layout}
           onInfoClick={onInfoClick}
+          onZoomClick={onZoomClick}
         />
       ))}
     </div>
