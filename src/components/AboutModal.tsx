@@ -56,20 +56,22 @@ export default function AboutModal({ open, onClose }: AboutModalProps) {
 
         <div className="space-y-4 text-sm leading-relaxed text-white/60">
           <p>
-            PokeArt.ai is a semantic search engine for Pokémon card
-            illustrations. Instead of searching by name or set, you describe
-            what you see — hidden details, art styles, color palettes, and
-            moods.
+            PokeArt.ai helps you find Pokémon cards by how they look. Describe
+            a scene, color, mood, or art style — like &ldquo;snowy beach&rdquo;
+            or &ldquo;watercolor&rdquo; — and we&apos;ll surface cards whose
+            artwork matches.
           </p>
           <p>
-            Each card&apos;s artwork is analyzed by AI to generate rich
-            descriptions used for embedding-based similarity search. Click the
-            info button on any card to see the description that powered its
+            Under the hood, each card&apos;s illustration is described by AI and
+            stored as a vector embedding. Your search is compared against those
+            descriptions so results are ranked by meaning, not just card name.
+            Use Info on any result to read the art description that powered the
             match.
           </p>
-          <p className="text-white/40">
-            This is a demo interface with mock data. Card images are
-            placeholders until connected to a live dataset.
+          <p>
+            Optional filters narrow by rarity or set. Sign in with Google to
+            unlock AI filter, which reviews the top matches and drops cards that
+            are only loosely related.
           </p>
         </div>
       </div>
