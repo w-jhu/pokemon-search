@@ -24,6 +24,7 @@
 .DS_Store
 *.pem
 failed_cards.json
+failed_cards_from_back.json
 
 # debug
 npm-debug.log*

@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "ingest": "tsx scripts/ingestCards.ts",
+    "ingest:back": "tsx scripts/ingestCardsFromBack.ts",
     "ingest:new": "tsx scripts/ingestNewCards.ts",
     "compare-detail": "tsx scripts/compareDetail.ts"
   },
