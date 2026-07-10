@@ -163,6 +163,18 @@ async function filterRelevantCardIds(
   }
 }
 
+function publicErrorMessage(error: unknown): string {
+  if (!isDebugMode()) {
+    return "Failed to perform search.";
+  }
+
+  if (error instanceof Error && error.message) {
+    return `Search failed: ${error.message}`;
+  }
+
+  return "Failed to perform search.";
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -180,7 +192,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = await auth();
+    let session = null;
+    try {
+      session = await auth();
+    } catch (error) {
+      console.error("Auth session error:", error);
+      // Continue as guest if auth misconfigured
+    }
+
     const userId = session?.user?.id ?? session?.user?.email ?? null;
     const isSignedIn = Boolean(userId);
     const ip = getClientIp(request);
@@ -321,7 +340,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Search API error:", error);
     return NextResponse.json(
-      { error: "Failed to perform search." },
+      { error: publicErrorMessage(error) },
       { status: 500 }
     );
   }

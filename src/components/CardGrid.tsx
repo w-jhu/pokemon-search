@@ -23,7 +23,7 @@ export default function CardGrid({
       className={`transition-opacity duration-500 ${
         isList
           ? "flex flex-col gap-4"
-          : "grid grid-cols-2 gap-6 md:grid-cols-4 lg:grid-cols-5"
+          : "grid grid-cols-2 gap-6 md:grid-cols-4 xl:grid-cols-6"
       }`}
     >
       {cards.map((card) => (

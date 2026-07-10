@@ -59,13 +59,24 @@ export async function enforceRateLimit(
     };
   }
 
-  const result = await limiter.limit(`${kind}:${identifier}`);
-  return {
-    success: result.success,
-    limit: result.limit,
-    remaining: result.remaining,
-    reset: result.reset,
-  };
+  try {
+    const result = await limiter.limit(`${kind}:${identifier}`);
+    return {
+      success: result.success,
+      limit: result.limit,
+      remaining: result.remaining,
+      reset: result.reset,
+    };
+  } catch (error) {
+    // Don't take down search if Redis misconfigured — log and allow
+    console.error("Upstash rate limit error:", error);
+    return {
+      success: true,
+      limit: requests,
+      remaining: requests,
+      reset: Date.now() + 60 * 60 * 1000,
+    };
+  }
 }
 
 export function rateLimitHeaders(result: LimitResult): HeadersInit {
