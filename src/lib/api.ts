@@ -19,7 +19,7 @@ export interface SearchResponse {
 export async function searchCards(
   query: string,
   filters: SearchFilters = { rarity: "", setName: "" },
-  useLlmFilter = true
+  useLlmFilter = false
 ): Promise<SearchResponse> {
   const response = await fetch("/api/search", {
     method: "POST",

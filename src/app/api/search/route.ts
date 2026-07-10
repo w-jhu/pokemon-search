@@ -3,6 +3,12 @@ import OpenAI from "openai";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { PokemonCard } from "@/types/pokemon";
 import { isDebugMode } from "@/lib/appMode";
+import { auth } from "@/auth";
+import {
+  enforceRateLimit,
+  getClientIp,
+  rateLimitHeaders,
+} from "@/lib/rateLimit";
 
 const INDEX_NAME = "pokemon-card-art";
 const TOP_K = 36;
@@ -94,14 +100,18 @@ function stripScoresForClient(cards: PokemonCard[]): PokemonCard[] {
   return cards.map(({ score: _score, ...card }) => card);
 }
 
-function buildSearchResponse(cards: PokemonCard[], meta: Record<string, unknown>) {
+function buildSearchResponse(
+  cards: PokemonCard[],
+  meta: Record<string, unknown>,
+  headers?: HeadersInit
+) {
   const payload: { cards: PokemonCard[]; meta?: Record<string, unknown> } = {
     cards: stripScoresForClient(cards),
   };
   if (isDebugMode()) {
     payload.meta = meta;
   }
-  return NextResponse.json(payload);
+  return NextResponse.json(payload, headers ? { headers } : undefined);
 }
 
 async function filterRelevantCardIds(
@@ -161,13 +171,57 @@ export async function POST(request: NextRequest) {
       typeof body.rarity === "string" ? body.rarity.trim() : "";
     const setName =
       typeof body.setName === "string" ? body.setName.trim() : "";
-    const useLlmFilter = body.useLlmFilter !== false;
+    const requestedLlm = body.useLlmFilter === true;
 
     if (!query) {
       return NextResponse.json(
         { error: "Query string is required." },
         { status: 400 }
       );
+    }
+
+    const session = await auth();
+    const userId = session?.user?.id ?? session?.user?.email ?? null;
+    const isSignedIn = Boolean(userId);
+    const ip = getClientIp(request);
+
+    // Guests cannot use AI filter — enforced server-side
+    const useLlmFilter = requestedLlm && isSignedIn;
+
+    const searchLimit = await enforceRateLimit(
+      isSignedIn ? "signedIn" : "anon",
+      isSignedIn ? String(userId) : ip
+    );
+
+    if (!searchLimit.success) {
+      return NextResponse.json(
+        {
+          error: isSignedIn
+            ? "Search rate limit reached. Try again later."
+            : "Too many searches from this network. Sign in for higher limits, or try again later.",
+        },
+        { status: 429, headers: rateLimitHeaders(searchLimit) }
+      );
+    }
+
+    if (requestedLlm && !isSignedIn) {
+      return NextResponse.json(
+        { error: "Sign in with Google to use AI filter." },
+        { status: 401, headers: rateLimitHeaders(searchLimit) }
+      );
+    }
+
+    if (useLlmFilter) {
+      const aiLimit = await enforceRateLimit("ai", String(userId));
+      if (!aiLimit.success) {
+        return NextResponse.json(
+          {
+            error:
+              "AI filter rate limit reached. Search without AI filter, or try again later.",
+          },
+          { status: 429, headers: rateLimitHeaders(aiLimit) }
+        );
+      }
     }
 
     if (!process.env.OPENAI_API_KEY) {
@@ -215,8 +269,6 @@ export async function POST(request: NextRequest) {
       )
     );
 
-    // Prefer score > 0.2, but always send at least 12 candidates to the LLM
-    // (or all matches if fewer than 12 were retrieved).
     const aboveThreshold = allMatches.filter(
       (card) => (card.score ?? 0) > MIN_PINECONE_SCORE
     );
@@ -225,24 +277,26 @@ export async function POST(request: NextRequest) {
         ? aboveThreshold
         : allMatches.slice(0, Math.min(MIN_LLM_CANDIDATES, allMatches.length));
 
-    // Instant mode: skip LLM and return Pinecone ranking directly
     if (!useLlmFilter) {
-      return buildSearchResponse(allMatches, {
-        retrieved: allMatches.length,
-        candidates: 0,
-        kept: allMatches.length,
-        filtered: false,
-        minScore: MIN_PINECONE_SCORE,
-        toppedUp: false,
-        llmEnabled: false,
-      });
+      return buildSearchResponse(
+        allMatches,
+        {
+          retrieved: allMatches.length,
+          candidates: 0,
+          kept: allMatches.length,
+          filtered: false,
+          minScore: MIN_PINECONE_SCORE,
+          toppedUp: false,
+          llmEnabled: false,
+        },
+        rateLimitHeaders(searchLimit)
+      );
     }
 
     const includedIds = await filterRelevantCardIds(openai, query, candidates);
 
     let cards: PokemonCard[];
     if (includedIds === null) {
-      // LLM failed — fall back to Pinecone ranking (top 12) so search still works
       cards = candidates.slice(0, 12);
     } else {
       const includeSet = new Set(includedIds);
@@ -251,15 +305,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return buildSearchResponse(cards, {
-      retrieved: allMatches.length,
-      candidates: candidates.length,
-      kept: cards.length,
-      filtered: includedIds !== null,
-      minScore: MIN_PINECONE_SCORE,
-      toppedUp: aboveThreshold.length < MIN_LLM_CANDIDATES,
-      llmEnabled: true,
-    });
+    return buildSearchResponse(
+      cards,
+      {
+        retrieved: allMatches.length,
+        candidates: candidates.length,
+        kept: cards.length,
+        filtered: includedIds !== null,
+        minScore: MIN_PINECONE_SCORE,
+        toppedUp: aboveThreshold.length < MIN_LLM_CANDIDATES,
+        llmEnabled: true,
+      },
+      rateLimitHeaders(searchLimit)
+    );
   } catch (error) {
     console.error("Search API error:", error);
     return NextResponse.json(

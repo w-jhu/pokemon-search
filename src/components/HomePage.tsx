@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import { searchCards, SearchMeta } from "@/lib/api";
 import { LayoutDensity, PokemonCard } from "@/types/pokemon";
 import { EMPTY_FILTERS, SearchFilters } from "@/data/filterOptions";
@@ -19,9 +20,12 @@ import DebugBadge from "./DebugBadge";
 const PAGE_SIZE = 12;
 
 export default function HomePage() {
+  const { status } = useSession();
+  const isSignedIn = status === "authenticated";
+
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
-  const [useLlmFilter, setUseLlmFilter] = useState(true);
+  const [useLlmFilter, setUseLlmFilter] = useState(false);
   const [results, setResults] = useState<PokemonCard[]>([]);
   const [searchMeta, setSearchMeta] = useState<SearchMeta | null>(null);
   const [page, setPage] = useState(1);
@@ -34,6 +38,13 @@ export default function HomePage() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [fadeKey, setFadeKey] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Guests cannot use AI filter — force off when signed out
+  useEffect(() => {
+    if (!isSignedIn && useLlmFilter) {
+      setUseLlmFilter(false);
+    }
+  }, [isSignedIn, useLlmFilter]);
 
   const totalPages = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
   const pageCards = useMemo(() => {
@@ -94,12 +105,13 @@ export default function HomePage() {
 
   const handleLlmFilterChange = useCallback(
     (enabled: boolean) => {
+      if (!isSignedIn && enabled) return;
       setUseLlmFilter(enabled);
       if (query.trim()) {
         executeSearch(query, filters, enabled);
       }
     },
-    [executeSearch, query, filters]
+    [executeSearch, query, filters, isSignedIn]
   );
 
   const handlePageChange = useCallback((nextPage: number) => {

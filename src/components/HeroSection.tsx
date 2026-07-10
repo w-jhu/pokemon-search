@@ -1,5 +1,6 @@
 "use client";
 
+import { useSession } from "next-auth/react";
 import SearchBar from "./SearchBar";
 import SearchFiltersBar from "./SearchFiltersBar";
 import { sampleSearches } from "@/data/mockCards";
@@ -28,6 +29,9 @@ export default function HeroSection({
   isLoading = false,
   inputRef,
 }: HeroSectionProps) {
+  const { status } = useSession();
+  const isSignedIn = status === "authenticated";
+
   return (
     <section className="flex flex-col items-center px-6 pb-12 pt-16 text-center">
       <p className="mb-8 max-w-md text-sm leading-relaxed text-white/50 md:text-base">
@@ -47,6 +51,7 @@ export default function HeroSection({
         onChange={onFiltersChange}
         useLlmFilter={useLlmFilter}
         onLlmFilterChange={onLlmFilterChange}
+        isSignedIn={isSignedIn}
         disabled={isLoading}
       />
 
