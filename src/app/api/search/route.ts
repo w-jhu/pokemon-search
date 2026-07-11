@@ -303,11 +303,11 @@ export async function POST(request: NextRequest) {
 
     if (!useLlmFilter) {
       return buildSearchResponse(
-        allMatches,
+        aboveThreshold,
         {
           retrieved: allMatches.length,
           candidates: 0,
-          kept: allMatches.length,
+          kept: aboveThreshold.length,
           filtered: false,
           minScore: MIN_PINECONE_SCORE,
           toppedUp: false,
