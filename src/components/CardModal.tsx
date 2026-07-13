@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
 import { PokemonCard } from "@/types/pokemon";
+import { isDebugMode } from "@/lib/appMode";
 
 interface CardModalProps {
   card: PokemonCard | null;
@@ -20,6 +21,8 @@ export default function CardModal({ card, onClose }: CardModalProps) {
   }, [card, onClose]);
 
   if (!card) return null;
+
+  const showAiDetails = isDebugMode();
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
@@ -56,26 +59,39 @@ export default function CardModal({ card, onClose }: CardModalProps) {
           </button>
         </div>
 
-        <div className="mb-3 flex items-center gap-2">
-          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-white/40">
-            AI Embedding
-          </span>
-        </div>
+        {showAiDetails ? (
+          <>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-white/40">
+                AI Embedding
+              </span>
+            </div>
 
-        <p className="text-sm leading-relaxed text-white/70">
-          {card.artDescription}
-        </p>
+            <p className="text-sm leading-relaxed text-white/70">
+              {card.artDescription}
+            </p>
 
-        <div className="mt-4 flex flex-wrap gap-1.5">
-          {card.keywords.map((keyword) => (
-            <span
-              key={keyword}
-              className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs text-white/50"
-            >
-              {keyword}
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              {card.keywords.map((keyword) => (
+                <span
+                  key={keyword}
+                  className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs text-white/50"
+                >
+                  {keyword}
+                </span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/5 px-4 py-8 text-center">
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-white/40">
+              WIP
             </span>
-          ))}
-        </div>
+            <p className="text-sm text-white/50">
+              More card details coming soon.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
