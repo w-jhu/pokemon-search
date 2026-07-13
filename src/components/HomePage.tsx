@@ -18,6 +18,8 @@ import Pagination from "./Pagination";
 import DebugBadge from "./DebugBadge";
 
 const PAGE_SIZE = 12;
+const DEBOUNCE_MS = 400;
+const MIN_QUERY_LENGTH = 2;
 
 export default function HomePage() {
   const { status } = useSession();
@@ -52,14 +54,35 @@ export default function HomePage() {
     return results.slice(start, start + PAGE_SIZE);
   }, [results, page]);
 
-  const executeSearch = useCallback(
+  const abortRef = useRef<AbortController | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filtersRef = useRef(filters);
+  const llmRef = useRef(useLlmFilter);
+
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
+  useEffect(() => {
+    llmRef.current = useLlmFilter;
+  }, [useLlmFilter]);
+
+  const runSearch = useCallback(
     async (
       searchQuery: string,
       searchFilters: SearchFilters,
       llmEnabled: boolean
     ) => {
       const trimmed = searchQuery.trim();
-      if (!trimmed) return;
+      const hasFilters =
+        searchFilters.rarities.length > 0 || searchFilters.sets.length > 0;
+      const isBrowse = trimmed.length < MIN_QUERY_LENGTH;
+      // Nothing to do without either enough text or an active filter
+      if (isBrowse && !hasFilters) return;
+
+      // Cancel any in-flight request so stale responses can't overwrite newer ones
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
       setIsLoading(true);
       setError(null);
@@ -68,50 +91,79 @@ export default function HomePage() {
 
       try {
         const { cards, meta } = await searchCards(
-          trimmed,
+          isBrowse ? "" : trimmed,
           searchFilters,
-          llmEnabled
+          isBrowse ? false : llmEnabled,
+          controller.signal
         );
+        if (controller.signal.aborted) return;
         setResults(cards);
         setSearchMeta(meta ?? null);
         setFadeKey((k) => k + 1);
       } catch (err) {
+        if (controller.signal.aborted) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
         setResults([]);
         setSearchMeta(null);
         setError(err instanceof Error ? err.message : "Search failed.");
       } finally {
-        setIsLoading(false);
+        if (abortRef.current === controller) {
+          setIsLoading(false);
+          abortRef.current = null;
+        }
       }
     },
     []
   );
 
+  // Live search as you type and browse-on-filter — both debounced.
+  // Base results only; the AI filter applies on submit (Enter).
+  useEffect(() => {
+    const trimmed = query.trim();
+    const hasFilters = filters.rarities.length > 0 || filters.sets.length > 0;
+
+    if (trimmed.length < MIN_QUERY_LENGTH && !hasFilters) {
+      // No text and no filters → return to the initial state
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setResults([]);
+      setSearchMeta(null);
+      setError(null);
+      setHasSearched(false);
+      setIsLoading(false);
+      return;
+    }
+
+    const id = setTimeout(() => {
+      runSearch(query, filters, false);
+    }, DEBOUNCE_MS);
+    debounceRef.current = id;
+    return () => clearTimeout(id);
+  }, [query, filters, runSearch]);
+
   const handleSearch = useCallback(
     (searchQuery: string) => {
-      executeSearch(searchQuery, filters, useLlmFilter);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      runSearch(searchQuery, filtersRef.current, llmRef.current);
     },
-    [executeSearch, filters, useLlmFilter]
+    [runSearch]
   );
 
-  const handleFiltersChange = useCallback(
-    (nextFilters: SearchFilters) => {
-      setFilters(nextFilters);
-      if (query.trim()) {
-        executeSearch(query, nextFilters, useLlmFilter);
-      }
-    },
-    [executeSearch, query, useLlmFilter]
-  );
+  const handleFiltersChange = useCallback((nextFilters: SearchFilters) => {
+    // The debounced effect above re-runs the search when filters change.
+    setFilters(nextFilters);
+  }, []);
 
   const handleLlmFilterChange = useCallback(
     (enabled: boolean) => {
       if (!isSignedIn && enabled) return;
       setUseLlmFilter(enabled);
-      if (query.trim()) {
-        executeSearch(query, filters, enabled);
+      if (query.trim().length >= MIN_QUERY_LENGTH) {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        runSearch(query, filtersRef.current, enabled);
       }
     },
-    [executeSearch, query, filters, isSignedIn]
+    [runSearch, query, isSignedIn]
   );
 
   const handlePageChange = useCallback((nextPage: number) => {
@@ -121,11 +173,13 @@ export default function HomePage() {
   }, []);
 
   const showEmpty =
-    !isLoading && hasSearched && query.trim() !== "" && results.length === 0 && !error;
+    !isLoading && hasSearched && results.length === 0 && !error;
 
   const activeFilterLabels = [
-    filters.rarity && `rarity: ${filters.rarity}`,
-    filters.setName && `set: ${filters.setName}`,
+    filters.rarities.length > 0 &&
+      `${filters.rarities.length} ${filters.rarities.length === 1 ? "rarity" : "rarities"}`,
+    filters.sets.length > 0 &&
+      `${filters.sets.length} ${filters.sets.length === 1 ? "set" : "sets"}`,
   ].filter(Boolean);
 
   const rangeStart = results.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
@@ -171,7 +225,12 @@ export default function HomePage() {
               <div className="mb-6 space-y-2">
                 {results.length > 0 ? (
                   <p className="text-sm text-white/40">
-                    {`${results.length} ${results.length === 1 ? "result" : "results"} for “${query}”`}
+                    {`${results.length} ${results.length === 1 ? "result" : "results"}`}
+                    {query.trim()
+                      ? ` for “${query}”`
+                      : searchMeta?.browse
+                        ? " · browsing"
+                        : ""}
                     {totalPages > 1 && (
                       <span className="text-white/25">
                         {` · showing ${rangeStart}–${rangeEnd}`}

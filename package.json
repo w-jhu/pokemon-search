@@ -10,7 +10,8 @@
     "ingest": "tsx scripts/ingestCards.ts",
     "ingest:back": "tsx scripts/ingestCardsFromBack.ts",
     "ingest:new": "tsx scripts/ingestNewCards.ts",
-    "compare-detail": "tsx scripts/compareDetail.ts"
+    "compare-detail": "tsx scripts/compareDetail.ts",
+    "collect:filters": "tsx scripts/collectFilters.ts"
   },
   "dependencies": {
     "@pinecone-database/pinecone": "^8.0.0",

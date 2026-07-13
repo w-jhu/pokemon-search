@@ -12,10 +12,20 @@ import {
 
 const INDEX_NAME = "pokemon-card-art";
 const TOP_K = 36;
+const BROWSE_TOP_K = 100;
+const EMBED_DIM = 1536;
 const MIN_PINECONE_SCORE = 0.2;
 const MIN_LLM_CANDIDATES = 12;
 const RERANK_MODEL = "gpt-4o-mini";
 const MAX_DESCRIPTION_CHARS = 400;
+
+// Pinecone requires a query vector; for filter-only "browse" we use a neutral
+// non-zero vector and re-sort the filtered matches alphabetically.
+const NEUTRAL_VECTOR = new Array(EMBED_DIM).fill(1 / Math.sqrt(EMBED_DIM));
+
+function sortByNameAsc(cards: PokemonCard[]): PokemonCard[] {
+  return [...cards].sort((a, b) => a.name.localeCompare(b.name));
+}
 
 const FILTER_SYSTEM_PROMPT = `Strict filter for Pokémon card art search. Return which candidate ids to INCLUDE.
 
@@ -73,21 +83,30 @@ function mapMatchToCard(
 }
 
 function buildMetadataFilter(
-  rarity?: string,
-  setName?: string
+  rarities: string[],
+  sets: string[]
 ): Record<string, unknown> | undefined {
   const conditions: Record<string, unknown>[] = [];
 
-  if (rarity) {
-    conditions.push({ rarity: { $eq: rarity } });
+  if (rarities.length > 0) {
+    conditions.push({ rarity: { $in: rarities } });
   }
-  if (setName) {
-    conditions.push({ setName: { $eq: setName } });
+  if (sets.length > 0) {
+    conditions.push({ setName: { $in: sets } });
   }
 
   if (conditions.length === 0) return undefined;
   if (conditions.length === 1) return conditions[0];
   return { $and: conditions };
+}
+
+function parseStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item === "string" && item.trim()) seen.add(item.trim());
+  }
+  return [...seen];
 }
 
 function truncate(text: string, maxChars: number): string {
@@ -184,13 +203,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const query =
       typeof body.query === "string" ? normalizeQuery(body.query) : "";
-    const rarity =
-      typeof body.rarity === "string" ? body.rarity.trim() : "";
-    const setName =
-      typeof body.setName === "string" ? body.setName.trim() : "";
+    const rarities = parseStringArray(body.rarities);
+    const sets = parseStringArray(body.sets);
     const requestedLlm = body.useLlmFilter === true;
+    const hasFilters = rarities.length > 0 || sets.length > 0;
+    // "Browse" mode: no text query, but filters are set — list matching cards.
+    const isBrowse = !query && hasFilters;
 
-    if (!query) {
+    if (!query && !hasFilters) {
       return NextResponse.json(
         { error: "Query string is required." },
         { status: 400 }
@@ -209,8 +229,8 @@ export async function POST(request: NextRequest) {
     const isSignedIn = Boolean(userId);
     const ip = getClientIp(request);
 
-    // Guests cannot use AI filter — enforced server-side
-    const useLlmFilter = requestedLlm && isSignedIn;
+    // Guests cannot use AI filter — enforced server-side. Browse never uses it.
+    const useLlmFilter = requestedLlm && isSignedIn && !isBrowse;
 
     const searchLimit = await enforceRateLimit(
       isSignedIn ? "signedIn" : "anon",
@@ -264,34 +284,58 @@ export async function POST(request: NextRequest) {
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const embeddingResponse = await openai.embeddings.create({
-      model: "text-embedding-3-small",
-      input: query,
-    });
-
-    const vector = embeddingResponse.data[0].embedding;
+    let vector: number[];
+    if (isBrowse) {
+      vector = NEUTRAL_VECTOR;
+    } else {
+      const embeddingResponse = await openai.embeddings.create({
+        model: "text-embedding-3-small",
+        input: query,
+      });
+      vector = embeddingResponse.data[0].embedding;
+    }
 
     const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
     const index = pinecone.index(INDEX_NAME);
 
-    const filter = buildMetadataFilter(rarity || undefined, setName || undefined);
+    const filter = buildMetadataFilter(rarities, sets);
 
     const queryResponse = await index.query({
       vector,
-      topK: TOP_K,
+      topK: isBrowse ? BROWSE_TOP_K : TOP_K,
       includeMetadata: true,
       ...(filter ? { filter } : {}),
     });
 
-    const allMatches: PokemonCard[] = sortByScoreDesc(
-      (queryResponse.matches ?? []).map((match) =>
+    const mappedMatches: PokemonCard[] = (queryResponse.matches ?? []).map(
+      (match) =>
         mapMatchToCard(
           match.id,
           (match.metadata ?? {}) as Record<string, unknown>,
           match.score
         )
-      )
     );
+
+    // Browse has no meaningful relevance scores — list matches alphabetically.
+    if (isBrowse) {
+      const browseCards = sortByNameAsc(mappedMatches);
+      return buildSearchResponse(
+        browseCards,
+        {
+          retrieved: browseCards.length,
+          candidates: 0,
+          kept: browseCards.length,
+          filtered: false,
+          minScore: 0,
+          toppedUp: false,
+          llmEnabled: false,
+          browse: true,
+        },
+        rateLimitHeaders(searchLimit)
+      );
+    }
+
+    const allMatches: PokemonCard[] = sortByScoreDesc(mappedMatches);
 
     const aboveThreshold = allMatches.filter(
       (card) => (card.score ?? 0) > MIN_PINECONE_SCORE

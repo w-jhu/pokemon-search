@@ -7,6 +7,7 @@ interface EmptyStateProps {
 }
 
 export default function EmptyState({ query }: EmptyStateProps) {
+  const hasQuery = query.trim() !== "";
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md">
@@ -14,8 +15,14 @@ export default function EmptyState({ query }: EmptyStateProps) {
       </div>
       <h3 className="text-lg font-medium text-white/70">No cards found</h3>
       <p className="mt-2 max-w-sm text-sm text-white/40">
-        No illustrations matched &ldquo;{query}&rdquo;. Try describing colors,
-        art styles, hidden details, or moods.
+        {hasQuery ? (
+          <>
+            No illustrations matched &ldquo;{query}&rdquo;. Try describing
+            colors, art styles, hidden details, or moods.
+          </>
+        ) : (
+          <>No cards match these filters. Try a different rarity or set.</>
+        )}
       </p>
     </div>
   );

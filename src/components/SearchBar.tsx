@@ -49,8 +49,7 @@ export default function SearchBar({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="Describe the art you're looking for..."
-            disabled={isLoading}
-            className="flex-1 bg-transparent text-base text-white placeholder:text-white/35 outline-none disabled:opacity-50 md:text-lg"
+            className="flex-1 bg-transparent text-base text-white placeholder:text-white/35 outline-none md:text-lg"
             aria-label="Search Pokémon card art"
           />
           {isLoading ? (

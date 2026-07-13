@@ -9,6 +9,7 @@ export interface SearchMeta {
   minScore: number;
   toppedUp?: boolean;
   llmEnabled?: boolean;
+  browse?: boolean;
 }
 
 export interface SearchResponse {
@@ -18,16 +19,18 @@ export interface SearchResponse {
 
 export async function searchCards(
   query: string,
-  filters: SearchFilters = { rarity: "", setName: "" },
-  useLlmFilter = false
+  filters: SearchFilters = { rarities: [], sets: [] },
+  useLlmFilter = false,
+  signal?: AbortSignal
 ): Promise<SearchResponse> {
   const response = await fetch("/api/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal,
     body: JSON.stringify({
       query,
-      rarity: filters.rarity || undefined,
-      setName: filters.setName || undefined,
+      rarities: filters.rarities,
+      sets: filters.sets,
       useLlmFilter,
     }),
   });
